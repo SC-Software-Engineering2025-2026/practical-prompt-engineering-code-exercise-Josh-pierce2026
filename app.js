@@ -1,4 +1,4 @@
-// app.js — prompt library using localStorage
+// app.js — prompt library using localStorage with 5-star ratings
 const STORAGE_KEY = "prompt_library_prompts";
 
 function readPrompts() {
@@ -11,7 +11,11 @@ function readPrompts() {
 }
 
 function writePrompts(list) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn("Failed to write prompts to localStorage", e);
+  }
 }
 
 function createPreview(text, maxWords = 15) {
@@ -21,6 +25,7 @@ function createPreview(text, maxWords = 15) {
   return words.slice(0, maxWords).join(" ") + "...";
 }
 
+// Render all prompts
 function renderPrompts() {
   const container = document.getElementById("cards");
   container.innerHTML = "";
@@ -35,6 +40,7 @@ function renderPrompts() {
   prompts.forEach((p) => {
     const card = document.createElement("article");
     card.className = "card";
+    card.setAttribute("data-id", p.id);
 
     const titleEl = document.createElement("div");
     titleEl.className = "title";
@@ -44,10 +50,10 @@ function renderPrompts() {
     previewEl.className = "preview";
     previewEl.textContent = createPreview(p.content, 18);
 
-    // full content element (hidden by default, shown when expanded)
-    const fullEl = document.createElement("div");
-    fullEl.className = "full-content";
-    fullEl.textContent = p.content;
+    // rating container (render stars)
+    const ratingContainer = document.createElement("div");
+    ratingContainer.className = "rating";
+    renderStarControl(ratingContainer, p.id, p.rating || 0);
 
     const meta = document.createElement("div");
     meta.className = "meta";
@@ -59,16 +65,6 @@ function renderPrompts() {
 
     const actions = document.createElement("div");
     actions.className = "actions";
-    // expand/collapse button
-    const expandBtn = document.createElement("button");
-    expandBtn.className = "btn primary";
-    expandBtn.textContent = "Expand";
-    expandBtn.setAttribute("aria-expanded", "false");
-    expandBtn.addEventListener("click", () => {
-      const expanded = card.classList.toggle("expanded");
-      expandBtn.textContent = expanded ? "Collapse" : "Expand";
-      expandBtn.setAttribute("aria-expanded", String(expanded));
-    });
 
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "btn danger";
@@ -76,17 +72,100 @@ function renderPrompts() {
     deleteBtn.setAttribute("data-id", p.id);
     deleteBtn.addEventListener("click", onDeletePrompt);
 
-    actions.appendChild(expandBtn);
     actions.appendChild(deleteBtn);
     meta.appendChild(idSpan);
     meta.appendChild(actions);
 
     card.appendChild(titleEl);
     card.appendChild(previewEl);
-    card.appendChild(fullEl);
+    card.appendChild(ratingContainer);
     card.appendChild(meta);
 
     container.appendChild(card);
+  });
+}
+
+// Set rating for a prompt and persist
+function setPromptRating(promptId, rating) {
+  const r = Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+  const prompts = readPrompts();
+  const idx = prompts.findIndex((p) => String(p.id) === String(promptId));
+  if (idx === -1) return;
+  prompts[idx].rating = r;
+  writePrompts(prompts);
+
+  // update the single card if present
+  const card = document.querySelector(`.card[data-id="${promptId}"]`);
+  if (card) {
+    const ratingContainer = card.querySelector(".rating");
+    if (ratingContainer) renderStarControl(ratingContainer, promptId, r);
+  } else {
+    renderPrompts();
+  }
+}
+
+// render accessible star control into a container
+function renderStarControl(container, promptId, currentRating) {
+  container.innerHTML = "";
+  const starGroup = document.createElement("div");
+  starGroup.className = "star-group";
+  starGroup.setAttribute("role", "radiogroup");
+  starGroup.setAttribute("aria-label", "Rate prompt (1 to 5 stars)");
+
+  for (let i = 1; i <= 5; i++) {
+    const starButton = document.createElement("button");
+    starButton.type = "button";
+    starButton.className = "star-btn";
+    starButton.dataset.value = i;
+    starButton.setAttribute("role", "radio");
+    starButton.setAttribute("aria-checked", (i === currentRating).toString());
+    starButton.setAttribute("aria-label", `${i} star${i > 1 ? "s" : ""}`);
+    starButton.innerHTML = i <= currentRating ? "★" : "☆";
+
+    if (i <= currentRating) starButton.classList.add("filled");
+
+    // mouse interaction
+    starButton.addEventListener("click", () => setPromptRating(promptId, i));
+
+    // keyboard interactions
+    starButton.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        setPromptRating(promptId, i);
+      } else if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") {
+        ev.preventDefault();
+        const prev = Math.max(1, i - 1);
+        starGroup.querySelector(`button[data-value="${prev}"]`)?.focus();
+      } else if (ev.key === "ArrowRight" || ev.key === "ArrowUp") {
+        ev.preventDefault();
+        const next = Math.min(5, i + 1);
+        starGroup.querySelector(`button[data-value="${next}"]`)?.focus();
+      } else if (/^[1-5]$/.test(ev.key)) {
+        ev.preventDefault();
+        setPromptRating(promptId, Number(ev.key));
+      }
+    });
+
+    // hover preview
+    starButton.addEventListener("mouseover", () =>
+      highlightStars(starGroup, i)
+    );
+    starGroup.addEventListener("mouseleave", () =>
+      highlightStars(starGroup, currentRating || 0)
+    );
+
+    starGroup.appendChild(starButton);
+  }
+
+  container.appendChild(starGroup);
+}
+
+function highlightStars(group, upTo) {
+  Array.from(group.querySelectorAll("button")).forEach((b) => {
+    const v = Number(b.dataset.value);
+    b.innerHTML = v <= upTo ? "★" : "☆";
+    if (v <= upTo) b.classList.add("filled");
+    else b.classList.remove("filled");
   });
 }
 
@@ -116,6 +195,7 @@ function onSavePrompt(e) {
     id: Date.now(),
     title: title || "Untitled",
     content,
+    rating: 0,
   };
   prompts.unshift(newPrompt); // newest first
   writePrompts(prompts);
