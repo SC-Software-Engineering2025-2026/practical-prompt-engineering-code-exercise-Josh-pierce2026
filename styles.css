@@ -22,7 +22,7 @@ body {
 }
 body {
   margin: 0;
-  font-family: var(--sans);
+  font-family: Arial, Helvetica, sans-serif;
   background: var(--bg);
   color: #0f172a;
   -webkit-font-smoothing: antialiased;
@@ -105,7 +105,7 @@ body {
 }
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
 }
 .card {
@@ -121,7 +121,7 @@ body {
 .card .title {
   font-weight: 700;
   font-size: 0.98rem;
-  color: #071133;
+  color: var(--muted); /* lighter title color */
   word-break: break-word;
 }
 .card .preview {
@@ -136,6 +136,7 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+  margin-top: auto; /* push meta row to bottom of card */
 }
 .card .actions {
   display: flex;
@@ -148,6 +149,133 @@ body {
   border: 0;
   cursor: pointer;
   font-size: 0.85rem;
+}
+
+/* expand/collapse */
+.card .full-content {
+  display: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  white-space: pre-wrap;
+  margin-top: 8px;
+}
+.card.expanded .full-content {
+  display: block;
+}
+.card.expanded .preview {
+  display: none; /* hide preview when expanded so text appears only once */
+}
+.card .collapse-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--muted); /* lighter expand text */
+}
+
+/* controls bar */
+.controls-bar {
+  max-width: 1100px;
+  margin: 0 auto 18px;
+  padding: 0 32px;
+}
+.controls-inner {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* switch */
+.switch {
+  display: inline-block;
+  position: relative;
+  width: 48px;
+  height: 26px;
+}
+.switch input {
+  display: none;
+}
+.switch .slider {
+  position: absolute;
+  inset: 0;
+  background: #cbd5e1;
+  border-radius: 999px;
+  transition: background 0.15s;
+}
+.switch .slider:before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+.switch input:checked + .slider {
+  background: var(--accent);
+}
+.switch input:checked + .slider:before {
+  transform: translateX(22px);
+}
+
+.cards-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.cards-controls-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.cards-controls-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* rounded select */
+select#sort-select {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #fff, #fbfdff);
+}
+
+/* dark mode overrides */
+body.dark-mode {
+  /* darker page background, medium grey cards */
+  --bg: #181b1f; /* dark grey background */
+  --card: #2f353a; /* medium grey cards */
+  --muted: #d1d6db; /* lighter text */
+  --accent: #2dd4bf;
+  --border: #3a4046; /* border between bg and card */
+  color: #e6eef6;
+}
+
+/* higher-contrast boxes and inputs in dark mode */
+body.dark-mode .prompt-form,
+body.dark-mode .card {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+body.dark-mode .prompt-form input[type="text"],
+body.dark-mode .prompt-form textarea,
+body.dark-mode select#sort-select {
+  background: #3b4146; /* slightly lighter than card to be visible */
+  border: 1px solid #51575c;
+  color: var(--muted);
+}
+
+.switch-label {
+  margin-left: 8px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 /* rating (5-star) styles */
@@ -177,6 +305,117 @@ body {
 .star-btn:focus {
   transform: scale(1.08);
   outline: 2px solid rgba(14, 165, 164, 0.12);
+}
+
+/* notes styles */
+.notes {
+  margin-top: 8px;
+}
+.notes-add {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.note-add-btn {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.note-editor {
+  margin-top: 8px;
+  width: 100%;
+}
+.note-editor .note-text,
+.note-edit-text,
+.note-text {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+}
+.note-editor-actions,
+.note-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.note-save-btn,
+.note-edit-save {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  border: 0;
+  cursor: pointer;
+}
+.note-cancel-btn,
+.note-edit-cancel {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.notes-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.note-item {
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.note-body {
+  color: var(--muted);
+  white-space: pre-wrap;
+  max-height: 3.6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.note-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.note-ts {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.note-actions button {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 0;
+  cursor: pointer;
+}
+.note-delete {
+  background: #ffe9e9;
+  color: #9b1c1c;
+}
+.note-edit {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.note-saved {
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+.note-delete-fade {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: all 0.18s ease;
 }
 
 /* small screens */

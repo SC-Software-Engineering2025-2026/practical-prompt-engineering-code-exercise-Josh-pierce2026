@@ -14,6 +14,8 @@
       </div>
     </header>
 
+    <!-- removed top controls-bar; theme switch moved next to the sort select below -->
+
     <main class="container">
       <section class="form-section">
         <form id="prompt-form" class="prompt-form">
@@ -45,6 +47,28 @@
 
       <section class="cards-section">
         <h2 class="cards-heading">Saved Prompts</h2>
+        <div class="cards-controls">
+          <div class="cards-controls-left">
+            <label for="sort-select">Sort:</label>
+            <select id="sort-select">
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="rating-desc">Highest rating</option>
+              <option value="rating-asc">Lowest rating</option>
+            </select>
+          </div>
+          <div class="cards-controls-right">
+            <label for="theme-toggle" class="switch-label">Dark mode</label>
+            <label class="switch" title="Toggle dark mode">
+              <input
+                type="checkbox"
+                id="theme-toggle"
+                aria-label="Toggle dark mode"
+              />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
         <div id="cards" class="cards-grid" aria-live="polite"></div>
       </section>
     </main>
