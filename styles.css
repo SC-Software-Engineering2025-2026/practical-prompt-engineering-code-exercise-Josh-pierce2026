@@ -105,7 +105,8 @@ body {
 }
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  /* increase minimum card width so model names have more room */
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 14px;
 }
 .card {
@@ -272,6 +273,14 @@ body.dark-mode select#sort-select {
   color: var(--muted);
 }
 
+/* higher contrast for Add note button text in dark mode */
+body.dark-mode .note-add-btn {
+  color: #e6eef6; /* light, high-contrast text */
+  border-color: #51575c;
+  background: transparent;
+  font-weight: 700;
+}
+
 .switch-label {
   margin-left: 8px;
   font-weight: 600;
@@ -417,6 +426,47 @@ body.dark-mode select#sort-select {
   transform: translateY(-6px);
   transition: all 0.18s ease;
 }
+
+/* prompt metadata display */
+.prompt-metadata {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.88rem;
+  color: var(--muted);
+  flex-wrap: wrap; /* allow items to wrap to next line on narrow cards */
+}
+.prompt-metadata .metadata-model {
+  font-weight: 700;
+  color: inherit;
+  /* show full model name, allow wrapping and breaking long words */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  max-width: none;
+  word-break: break-word;
+  font-size: 0.95rem;
+}
+.prompt-metadata .metadata-times {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.token-badge {
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: white;
+}
+.token-high {
+  background: #10b981;
+} /* green */
+.token-medium {
+  background: #f59e0b;
+} /* yellow/orange */
+.token-low {
+  background: #ef4444;
+} /* red */
 
 /* small screens */
 @media (max-width: 880px) {
