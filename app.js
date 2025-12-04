@@ -131,6 +131,249 @@ function updateTimestamps(metadata) {
 
 // ---------------- end metadata utilities ----------------
 
+// ---------------- Export / Import utilities ----------------
+const EXPORT_SCHEMA_VERSION = "1.0";
+const BACKUP_META_KEY = STORAGE_KEY + "_last_backup";
+
+function computeStats(prompts) {
+  const totalPrompts = Array.isArray(prompts) ? prompts.length : 0;
+  const ratings = (prompts || [])
+    .map((p) => (typeof p.rating === "number" ? p.rating : null))
+    .filter((r) => r !== null);
+  const avgRating = ratings.length
+    ? ratings.reduce((a, b) => a + b, 0) / ratings.length
+    : 0;
+  const modelCounts = {};
+  (prompts || []).forEach((p) => {
+    const m = p && p.metadata && p.metadata.model ? p.metadata.model : null;
+    if (m) modelCounts[m] = (modelCounts[m] || 0) + 1;
+  });
+  let mostUsedModel = null;
+  let maxCount = 0;
+  Object.keys(modelCounts).forEach((m) => {
+    if (modelCounts[m] > maxCount) {
+      maxCount = modelCounts[m];
+      mostUsedModel = m;
+    }
+  });
+  return {
+    totalPrompts,
+    averageRating: Math.round(avgRating * 100) / 100,
+    mostUsedModel,
+  };
+}
+
+function createExportPayload(prompts) {
+  return {
+    version: EXPORT_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    stats: computeStats(prompts),
+    prompts: Array.isArray(prompts) ? prompts : [],
+  };
+}
+
+function validateExportPayload(payload) {
+  if (!payload || typeof payload !== "object")
+    throw new Error("Export must be a JSON object.");
+  if (!payload.version) throw new Error("Missing export version.");
+  if (!payload.exportedAt || !isValidISODateString(payload.exportedAt))
+    throw new Error("Invalid or missing exportedAt timestamp.");
+  if (!Array.isArray(payload.prompts))
+    throw new Error("prompts must be an array.");
+  // basic prompt validation
+  payload.prompts.forEach((p, i) => {
+    if (!p || typeof p !== "object")
+      throw new Error(`Prompt at index ${i} is invalid.`);
+    if (p.id === undefined || p.id === null)
+      throw new Error(`Prompt at index ${i} is missing id.`);
+    if (typeof p.content !== "string")
+      throw new Error(`Prompt at index ${i} is missing content.`);
+    if (!p.metadata || typeof p.metadata !== "object")
+      throw new Error(`Prompt at index ${i} is missing metadata.`);
+    if (!p.metadata.model)
+      throw new Error(`Prompt at index ${i} metadata.model is missing.`);
+    if (!p.metadata.createdAt || !isValidISODateString(p.metadata.createdAt))
+      throw new Error(`Prompt at index ${i} has invalid metadata.createdAt.`);
+    if (!p.metadata.updatedAt || !isValidISODateString(p.metadata.updatedAt))
+      throw new Error(`Prompt at index ${i} has invalid metadata.updatedAt.`);
+    if (!p.metadata.tokenEstimate)
+      throw new Error(`Prompt at index ${i} has missing tokenEstimate.`);
+  });
+  return true;
+}
+
+function triggerDownload(filename, content) {
+  const blob = new Blob([content], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportPrompts() {
+  try {
+    const prompts = readPrompts();
+    const payload = createExportPayload(prompts);
+    validateExportPayload(payload);
+    const fname = `prompts_export_${new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")}.json`;
+    triggerDownload(fname, JSON.stringify(payload, null, 2));
+  } catch (err) {
+    console.error("Export failed", err);
+    alert(
+      "Export failed: " + (err && err.message ? err.message : "unknown error")
+    );
+  }
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result));
+    fr.onerror = (e) => reject(new Error("Failed to read file"));
+    fr.readAsText(file, "utf-8");
+  });
+}
+
+async function handleImportFile(file) {
+  let backupKey = null;
+  try {
+    const text = await readFileAsText(file);
+    let payload = null;
+    try {
+      payload = JSON.parse(text);
+    } catch (e) {
+      throw new Error("The selected file is not valid JSON.");
+    }
+
+    // version check
+    if (!payload.version) throw new Error("Export file missing version info.");
+    if (payload.version !== EXPORT_SCHEMA_VERSION) {
+      const proceed = confirm(
+        `Import file version (${payload.version}) does not match supported version (${EXPORT_SCHEMA_VERSION}). Proceed anyway?`
+      );
+      if (!proceed)
+        throw new Error("Import cancelled due to version mismatch.");
+    }
+
+    // validate payload structure
+    validateExportPayload(payload);
+
+    const incoming = payload.prompts;
+    const existing = readPrompts();
+
+    // backup existing data
+    try {
+      backupKey = STORAGE_KEY + "_backup_" + Date.now();
+      localStorage.setItem(backupKey, JSON.stringify(existing));
+      localStorage.setItem(BACKUP_META_KEY, backupKey);
+    } catch (e) {
+      console.warn("Failed to create local backup before import", e);
+      // continue but warn user
+    }
+
+    // detect duplicates by id
+    const existingIds = new Set(existing.map((p) => String(p.id)));
+    const duplicates = incoming.filter((p) => existingIds.has(String(p.id)));
+
+    let choiceReplace = false; // if true, replace whole dataset
+    if (duplicates.length > 0) {
+      // ask user whether to replace entirely or attempt merge
+      choiceReplace = confirm(
+        `${duplicates.length} duplicate prompt id(s) found. Click OK to replace your existing prompts entirely with the imported set. Click Cancel to merge (keep existing and update conflicts by newer updatedAt).`
+      );
+    } else {
+      // no duplicates: ask whether to append (merge) or replace
+      choiceReplace = confirm(
+        `No duplicate IDs found. Click OK to replace your existing prompts entirely with the imported set. Click Cancel to merge (append imported prompts).`
+      );
+    }
+
+    let final = [];
+    if (choiceReplace) {
+      final = incoming;
+    } else {
+      // merge: keep all existing, then add/replace from incoming
+      const map = new Map();
+      existing.forEach((p) => map.set(String(p.id), p));
+      incoming.forEach((p) => {
+        const key = String(p.id);
+        if (!map.has(key)) {
+          map.set(key, p);
+        } else {
+          // conflict: pick the one with newer metadata.updatedAt (fallback to incoming)
+          try {
+            const cur = map.get(key);
+            const curTime =
+              cur && cur.metadata && cur.metadata.updatedAt
+                ? Date.parse(cur.metadata.updatedAt)
+                : 0;
+            const inTime =
+              p && p.metadata && p.metadata.updatedAt
+                ? Date.parse(p.metadata.updatedAt)
+                : 0;
+            if (inTime >= curTime) map.set(key, p);
+            // else keep existing
+          } catch (e) {
+            // if any parsing error, prefer incoming
+            map.set(key, p);
+          }
+        }
+      });
+      final = Array.from(map.values());
+    }
+
+    // final validation before writing
+    validateExportPayload({
+      version: EXPORT_SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      prompts: final,
+    });
+
+    // write final dataset
+    try {
+      writePrompts(final);
+    } catch (e) {
+      throw new Error("Failed to write imported prompts to localStorage.");
+    }
+
+    alert(`Import successful: ${final.length} prompts now stored.`);
+    renderPrompts();
+    return true;
+  } catch (err) {
+    console.error("Import failed", err);
+    // rollback if backup exists
+    try {
+      const lastBackup = localStorage.getItem(BACKUP_META_KEY);
+      if (lastBackup) {
+        const v = localStorage.getItem(lastBackup);
+        if (v !== null) {
+          localStorage.setItem(STORAGE_KEY, v);
+          alert(
+            "Import failed and previous data was restored from backup. Error: " +
+              (err.message || err)
+          );
+          renderPrompts();
+          return false;
+        }
+      }
+    } catch (rbErr) {
+      console.error("Rollback failed", rbErr);
+    }
+    alert(
+      "Import failed: " + (err && err.message ? err.message : "unknown error")
+    );
+    return false;
+  }
+}
+
+// ---------------- end Export / Import utilities ----------------
+
 function readPrompts() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -746,4 +989,20 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   // apply saved theme
   applyTheme(readTheme());
+
+  // wire export/import controls
+  const exportBtn = document.getElementById("export-btn");
+  if (exportBtn) exportBtn.addEventListener("click", exportPrompts);
+
+  const importFile = document.getElementById("import-file");
+  if (importFile) {
+    importFile.addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      handleImportFile(f).finally(() => {
+        // clear input so same file can be re-selected later
+        importFile.value = "";
+      });
+    });
+  }
 });
